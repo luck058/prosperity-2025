@@ -9,7 +9,7 @@ from typing import Any
 
 class Trader:
     class InstrumentInfo:
-        def __init__(self, outer, product, posLimit, weightedPrices, period, smoothing):
+        def __init__(self, outer, product, posLimit, priceHistory, period, smoothing):
             # eg. "STARFRUITS"
             self.PRODUCT = product
 
@@ -27,7 +27,7 @@ class Trader:
             self.averageBuyingCost = 0
 
             # weighted prices for calculation
-            self.priceHistory = weightedPrices
+            self.priceHistory = priceHistory
 
             # length of liveData list
             self.PERIOD = period
@@ -201,14 +201,14 @@ class Trader:
         self.amethystInfo = self.InstrumentInfo(outer=self,
                                                 product="AMETHYSTS",
                                                 posLimit=20,
-                                                weightedPrices=[10000.0, 9999.714285714286, 10000.0, 10000.0, 10000.0,
+                                                priceHistory=[10000.0, 9999.714285714286, 10000.0, 10000.0, 10000.0,
                                                                 10000.0, 10001.0, 10000.0, 10000.0, 9996.666666666666],
                                                 period=10,
                                                 smoothing=5)
         self.starfruitInfo = self.InstrumentInfo(outer=self,
                                                  product="STARFRUIT",
                                                  posLimit=20,
-                                                 weightedPrices=[4751.5, 4749.5, 4751.5, 4748.48, 4753.8125,
+                                                 priceHistory=[4751.5, 4749.5, 4751.5, 4748.48, 4753.8125,
                                                                  4754.826086956522, 4748.032258064516, 4751.5, 4748.4,
                                                                  4750.333333333333],
                                                  period=10,
@@ -216,7 +216,7 @@ class Trader:
         self.orchidsInfo = self.InstrumentInfo(outer=self,
                                                product="ORCHIDS",
                                                posLimit=10,
-                                               weightedPrices=[],
+                                               priceHistory=[],
                                                period=10,
                                                smoothing=5)
         self.allInfo = [self.amethystInfo, self.starfruitInfo, self.orchidsInfo]
