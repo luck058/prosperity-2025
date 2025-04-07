@@ -61,6 +61,12 @@ traderData = ""
 trader = Trader()
 
 
+position = {
+    "PRODUCT1": 3,
+    "PRODUCT2": -5
+}
+
+
 order_depths = {
     "PRODUCT1": OrderDepth(
         buy_orders={10: 7, 9: 5},
