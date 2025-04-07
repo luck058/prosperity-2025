@@ -6,7 +6,6 @@ from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder
 from typing import Any
 
 
-
 class Trader:
     class InstrumentInfo:
         def __init__(self, outer, product, posLimit, priceHistory, period, smoothing):
@@ -90,7 +89,7 @@ class Trader:
                 try:
                     latestWeightedPrice = (self.getBestAskPrice() * abs(
                         self.getBestAskVolume()) + self.getBestBidPrice() * self.getBestBidVolume()) / (
-                                                      self.getBestAskVolume() + self.getBestBidVolume())
+                                                  self.getBestAskVolume() + self.getBestBidVolume())
                 except ZeroDivisionError:
                     latestWeightedPrice = None
                     # print("Divide by:", self.getBestAskVolume(), self.getBestBidVolume())
@@ -136,7 +135,7 @@ class Trader:
             ema = [sum(self.priceHistory[:int(period)]) / int(period)]
             for price in self.priceHistory[int(period):]:
                 ema.append((price * (self.SMOOTHING / (1 + period))) + ema[-1] * (
-                            1 - (self.SMOOTHING / (1 + period))))
+                        1 - (self.SMOOTHING / (1 + period))))
             return ema[-1]
 
         def updateAcceptablePrice(self) -> None:
@@ -166,6 +165,7 @@ class Trader:
                 # # print(f"Max sell volume for {self.PRODUCT}: {abs(self.POS_LIMIT + volume)}")
                 return abs(self.POS_LIMIT + volume)
 
+        # TODO What is this doing?
         # create the order to be sent out
         def createOrder(self, ioc, volume, price):
             if ioc:
@@ -198,30 +198,35 @@ class Trader:
 
     def __init__(self):
         # region define instrumentInfo
-        self.amethystInfo = self.InstrumentInfo(outer=self,
-                                                product="AMETHYSTS",
-                                                posLimit=20,
-                                                priceHistory=[10000.0, 9999.714285714286, 10000.0, 10000.0, 10000.0,
-                                                                10000.0, 10001.0, 10000.0, 10000.0, 9996.666666666666],
-                                                period=10,
-                                                smoothing=5)
-        self.starfruitInfo = self.InstrumentInfo(outer=self,
-                                                 product="STARFRUIT",
-                                                 posLimit=20,
-                                                 priceHistory=[4751.5, 4749.5, 4751.5, 4748.48, 4753.8125,
-                                                                 4754.826086956522, 4748.032258064516, 4751.5, 4748.4,
-                                                                 4750.333333333333],
-                                                 period=10,
-                                                 smoothing=5)
-        self.orchidsInfo = self.InstrumentInfo(outer=self,
-                                               product="ORCHIDS",
-                                               posLimit=10,
-                                               priceHistory=[],
-                                               period=10,
-                                               smoothing=5)
-        self.allInfo = [self.amethystInfo, self.starfruitInfo, self.orchidsInfo]
+        self.resinInfo = self.InstrumentInfo(outer=self,
+                                             product="RAINFOREST_RESIN",
+                                             posLimit=50,
+                                             priceHistory=[10002, 9998, 9996, 9996, 9995, 9995, 9996, 9996, 9995, 9996],
+                                             period=10,
+                                             smoothing=5)
 
-    def test_strategy(self, instrumentInfo: InstrumentInfo):
+        self.kelpInfo = self.InstrumentInfo(outer=self,
+                                            product="KELP",
+                                            posLimit=50,
+                                            priceHistory=[2032, 2032, 2032, 2032, 2032, 2032, 2032, 2034, 2032, 2032],
+                                            period=10,
+                                            smoothing=5)
+
+        self.inkInfo = self.InstrumentInfo(outer=self,
+                                           product="SQUID_INK",
+                                           posLimit=50,
+                                           priceHistory=[1031, 1830, 1831, 1831, 1829, 1830, 1832, 1834, 1837, 1838],
+                                           period=10,
+                                           smoothing=5)
+
+        self.allInfo = [self.resinInfo, self.kelpInfo, self.inkInfo]
+
+    # TODO figure out what this is doing
+    def test_strategy(self, instrumentInfo: InstrumentInfo) -> None:
+        """
+        If bid price is over 10k, sell
+        If ask price is under 10k, buy
+        """
         if instrumentInfo.getBestAskPrice() <= 10000:
             # min of volume we should buy, market best ask volume, and volume we can buy
             volume = min(abs(instrumentInfo.getBestAskVolume()), instrumentInfo.getAvailableVolume(buy=True))
@@ -280,7 +285,7 @@ class Trader:
             delta = max(band_up - instrumentInfo.getBestAskPrice(), 0.1)
             # limit volume based on potential profit, less profit -> less max volume for this price
             total_volume = (instrumentInfo.POS_LIMIT / (
-                        1 + np.exp((-5 * possibleProfit) / delta))) - instrumentInfo.POS_LIMIT / 2
+                    1 + np.exp((-5 * possibleProfit) / delta))) - instrumentInfo.POS_LIMIT / 2
 
             print(" Total Vol B ", band_up)
             # min of volume we should buy, market best ask volume, and volume we can buy
@@ -300,7 +305,7 @@ class Trader:
             possibleProfit = instrumentInfo.getBestBidPrice() - instrumentInfo.acceptablePrice
             delta = instrumentInfo.getBestBidPrice() - band_down
             total_volume = (instrumentInfo.POS_LIMIT / (
-                        1 + np.exp((-5 * possibleProfit) / delta))) - instrumentInfo.POS_LIMIT / 2
+                    1 + np.exp((-5 * possibleProfit) / delta))) - instrumentInfo.POS_LIMIT / 2
             print(" Total Vol B ", total_volume)
 
             volume = min(round(instrumentInfo.currentPosition + total_volume), instrumentInfo.getBestBidVolume(),
@@ -346,8 +351,3 @@ class Trader:
 
         traderData = "SAMPLE"
         return result, 0, traderData
-
-
-
-
-
