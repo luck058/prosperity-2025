@@ -221,6 +221,28 @@ class Trader:
 
         self.allInfo = [self.resinInfo, self.kelpInfo, self.inkInfo]
 
+
+    def displayOwnTrades(self, state: TradingState) -> None:
+        """Print all trades that happened in the previous timestep"""
+        for product in state.own_trades.keys():
+            trades: list[Trade] = state.own_trades[product]
+            trade: Trade
+            for trade in trades:
+                if trade.quantity != 0 and trade.timestamp == state.timestamp:
+                    are_buyer = trade.buyer == "SUBMISSION"
+                    are_seller = trade.seller == "SUBMISSION"
+                    assert are_buyer != are_seller, f"are_buyer: {are_buyer}, are_seller: {are_seller}"
+
+                    if are_buyer:
+                        print("Bought", end="")
+                    else:
+                        print("Sold", end="")
+
+                    print(f" {trade.quantity} {trade.symbol} at {trade.price} seashells at time={trade.timestamp}")
+
+
+
+
     # TODO figure out what this is doing
     def test_strategy(self, instrumentInfo: InstrumentInfo) -> None:
         """
@@ -252,8 +274,11 @@ class Trader:
                     if len(instrumentInfo.buyingCost) > 0:
                         instrumentInfo.buyingCost.pop(0)
 
-    def bollinger_band_strategy(self, instrumentInfo: InstrumentInfo):
+    def bollinger_band_strategy(self, instrumentInfo: InstrumentInfo, verbose=False):
         band_up, band_down = instrumentInfo.getBollingerBands(std_dev_mult=1)
+        print(f"bid: {instrumentInfo.getBestBidVolume()} @ {instrumentInfo.getBestBidPrice()}")
+        print(f"ask: {instrumentInfo.getBestAskVolume()} @ {instrumentInfo.getBestAskPrice()}")
+        print(f"band_up: {band_up}, band_down: {band_down}")
         band_up = band_up.values[-1][0]
         band_down = band_down.values[-1][0]
 
@@ -264,6 +289,7 @@ class Trader:
             if volume > 0:
                 instrumentInfo.orders.append(Order(instrumentInfo.PRODUCT, instrumentInfo.getBestAskPrice(), volume))
                 instrumentInfo.currentPosition += volume
+                print(f"Buying {volume} {instrumentInfo.PRODUCT} @ {instrumentInfo.getBestAskPrice()}")
 
         elif instrumentInfo.getBestAskPrice() < band_down:
             volume = min(round(instrumentInfo.POS_LIMIT - instrumentInfo.currentPosition),
@@ -272,6 +298,7 @@ class Trader:
             if volume > 0:
                 instrumentInfo.orders.append(Order(instrumentInfo.PRODUCT, instrumentInfo.getBestAskPrice(), -volume))
                 instrumentInfo.currentPosition -= volume
+                print(f"Selling {volume} {instrumentInfo.PRODUCT} @ {instrumentInfo.getBestBidPrice()}")
 
     def base_strategy(self, instrumentInfo: InstrumentInfo):
         band_up, band_down = instrumentInfo.getBollingerBands(std_dev_mult=1)
@@ -332,22 +359,32 @@ class Trader:
             instrumentInfo.orderDepth = state.order_depths[instrumentInfo.PRODUCT]
             instrumentInfo.appendOrderDepth()
             instrumentInfo.appendHistoricPrice()
-            instrumentInfo.updateAcceptablePrice()
+            # TODO Throws error in EMA
+            # instrumentInfo.updateAcceptablePrice()
         # endregion
 
         result = {}
 
+        self.displayOwnTrades(state)
+
         for product in state.order_depths.keys():
 
-            if product == 'STARFRUIT':
-                self.bollinger_band_strategy(self.starfruitInfo)
+            if product == "RAINFOREST_RESIN":
+                pass
 
-            if product == 'AMETHYSTS':
-                self.test_strategy(self.amethystInfo)
+            if product == "KELP":
+                self.bollinger_band_strategy(self.kelpInfo, verbose=True)
+
+            if product == "SQUID_INK":
+                pass
+
+
 
         for instrumentInfo in self.allInfo:
             result[instrumentInfo.PRODUCT] = instrumentInfo.orders
             instrumentInfo.orders = []
 
-        traderData = "SAMPLE"
-        return result, 0, traderData
+        traderData = "SAMPLE"  # String value holding Trader state data required. It will be delivered as TradingState.traderData on next execution.
+
+        conversions = 1
+        return result, conversions, traderData
