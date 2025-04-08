@@ -1,4 +1,4 @@
-from example_program import Trader
+from test import Trader
 from datamodel import Listing, OrderDepth, Trade, TradingState, Observation
 
 # region Default values
@@ -68,11 +68,15 @@ position = {
 
 
 order_depths = {
-    "PRODUCT1": OrderDepth(
+    "RAINFOREST_RESIN": OrderDepth(
         buy_orders={10: 7, 9: 5},
         sell_orders={11: -4, 12: -8}
     ),
-    "PRODUCT2": OrderDepth(
+    "KELP": OrderDepth(
+        buy_orders={142: 3, 141: 5},
+        sell_orders={144: -5, 145: -8}
+    ),
+    "SQUID_INK": OrderDepth(
         buy_orders={142: 3, 141: 5},
         sell_orders={144: -5, 145: -8}
     ),
