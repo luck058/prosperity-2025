@@ -1,9 +1,8 @@
 from typing import Dict, List
 import pandas as pd
 import numpy as np
-import json
+import jsonpickle
 from datamodel import Listing, Observation, Order, OrderDepth, ProsperityEncoder, Symbol, Trade, TradingState
-from typing import Any
 
 
 class Trader:
@@ -146,6 +145,7 @@ class Trader:
             """Get the bollinger bands based off SMA"""
             std = pd.DataFrame(self.priceHistory).rolling(self.PERIOD).std()
             sma = self.getSMA()
+            print(f"SMA: {sma}")
             bollinger_up = sma + std * std_dev_mult  # Calculate top band
             bollinger_down = sma - std * std_dev_mult  # Calculate bottom band
             return bollinger_up, bollinger_down
@@ -348,9 +348,16 @@ class Trader:
                         instrumentInfo.buyingCost.pop(0)
 
     def run(self, state: TradingState) -> Dict[str, List[Order]]:
+        if state.timestamp > 0:
+            prevTraderData = jsonpickle.loads(state.traderData)
 
         # region Sets order depth and appends live/weighted prices to each instrument
         for instrumentInfo in self.allInfo:
+            # Update the variables stored from last iteration
+            if state.timestamp > 0:
+                instrumentInfo.priceHistory = prevTraderData[instrumentInfo.PRODUCT]["priceHistory"]
+                instrumentInfo.orderDepthHistory = prevTraderData[instrumentInfo.PRODUCT]["orderDepthHistory"]
+
             instrumentInfo.previousPosition = instrumentInfo.currentPosition
             try:
                 instrumentInfo.currentPosition = state.position[instrumentInfo.PRODUCT]
@@ -373,18 +380,20 @@ class Trader:
                 pass
 
             if product == "KELP":
-                self.bollinger_band_strategy(self.kelpInfo, verbose=True)
+                # self.bollinger_band_strategy(self.kelpInfo, verbose=True)
+                print("priceHistory:", self.kelpInfo.priceHistory)
 
             if product == "SQUID_INK":
                 pass
 
 
-
+        traderData = {}
         for instrumentInfo in self.allInfo:
             result[instrumentInfo.PRODUCT] = instrumentInfo.orders
             instrumentInfo.orders = []
 
-        traderData = "SAMPLE"  # String value holding Trader state data required. It will be delivered as TradingState.traderData on next execution.
+            traderData[instrumentInfo.PRODUCT] = {"priceHistory": instrumentInfo.priceHistory,
+                                                  "orderDepthHistory": instrumentInfo.orderDepthHistory}
 
         conversions = 1
-        return result, conversions, traderData
+        return result, conversions, jsonpickle.dumps(traderData)
