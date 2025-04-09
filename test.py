@@ -25,7 +25,7 @@ class Trader:
             self.averageBuyingCost = 0
 
             # weighted prices for calculation
-            self.priceHistory = priceHistory
+            self.priceHistory: list[float] = priceHistory
 
             # length of liveData list
             self.PERIOD = period
@@ -112,7 +112,7 @@ class Trader:
             self.priceHistory.append(self.getMidPrice())
 
         # get sma (list) based on weighted prices list
-        def getSMA(self, period=None) -> float:
+        def getSMA(self, period=None) -> float | None:
             """
             Get the simple moving average with period = period
             If period=None (default), uses period = self.PERIOD
@@ -120,7 +120,11 @@ class Trader:
             """
             if period is None:
                 period = self.PERIOD
-            return pd.DataFrame(self.priceHistory).rolling(period).mean()
+
+            if len(self.priceHistory) < period:
+                return None
+            else:
+                return np.mean(self.priceHistory[-period:])
 
         def getEMA(self, period=None) -> float:
             """
@@ -143,11 +147,14 @@ class Trader:
 
         def getBollingerBands(self, std_dev_mult: float = 2) -> tuple[float, float]:
             """Get the bollinger bands based off SMA"""
-            std = pd.DataFrame(self.priceHistory).rolling(self.PERIOD).std()
-            sma = self.getSMA()
-            print(f"SMA: {sma}")
-            bollinger_up = sma + std * std_dev_mult  # Calculate top band
-            bollinger_down = sma - std * std_dev_mult  # Calculate bottom band
+            std = np.std(self.priceHistory)
+            moving_average = self.getSMA()
+
+            if std is None or moving_average is None:
+                return None, None
+
+            bollinger_up = moving_average + std * std_dev_mult  # Calculate top band
+            bollinger_down = moving_average - std * std_dev_mult  # Calculate bottom band
             return bollinger_up, bollinger_down
 
         # max amount we can buy regardless of the price
@@ -201,34 +208,35 @@ class Trader:
         self.resinInfo = self.InstrumentInfo(outer=self,
                                              product="RAINFOREST_RESIN",
                                              posLimit=50,
-                                             priceHistory=[10002, 9998, 9996, 9996, 9995, 9995, 9996, 9996, 9995, 9996],
+                                             priceHistory=[],
                                              period=10,
                                              smoothing=5)
 
         self.kelpInfo = self.InstrumentInfo(outer=self,
                                             product="KELP",
                                             posLimit=50,
-                                            priceHistory=[2032, 2032, 2032, 2032, 2032, 2032, 2032, 2034, 2032, 2032],
+                                            priceHistory=[],
                                             period=10,
                                             smoothing=5)
 
         self.inkInfo = self.InstrumentInfo(outer=self,
                                            product="SQUID_INK",
                                            posLimit=50,
-                                           priceHistory=[1031, 1830, 1831, 1831, 1829, 1830, 1832, 1834, 1837, 1838],
+                                           priceHistory=[],
                                            period=10,
                                            smoothing=5)
 
         self.allInfo = [self.resinInfo, self.kelpInfo, self.inkInfo]
 
-
     def displayOwnTrades(self, state: TradingState) -> None:
         """Print all trades that happened in the previous timestep"""
+        print("Own trades")
+        print(state.own_trades)
         for product in state.own_trades.keys():
             trades: list[Trade] = state.own_trades[product]
             trade: Trade
             for trade in trades:
-                if trade.quantity != 0 and trade.timestamp == state.timestamp:
+                if trade.quantity != 0 and trade.timestamp == state.timestamp - 100:
                     are_buyer = trade.buyer == "SUBMISSION"
                     are_seller = trade.seller == "SUBMISSION"
                     assert are_buyer != are_seller, f"are_buyer: {are_buyer}, are_seller: {are_seller}"
@@ -239,9 +247,6 @@ class Trader:
                         print("Sold", end="")
 
                     print(f" {trade.quantity} {trade.symbol} at {trade.price} seashells at time={trade.timestamp}")
-
-
-
 
     # TODO figure out what this is doing
     def test_strategy(self, instrumentInfo: InstrumentInfo) -> None:
@@ -274,31 +279,37 @@ class Trader:
                     if len(instrumentInfo.buyingCost) > 0:
                         instrumentInfo.buyingCost.pop(0)
 
-    def bollinger_band_strategy(self, instrumentInfo: InstrumentInfo, verbose=False):
-        band_up, band_down = instrumentInfo.getBollingerBands(std_dev_mult=1)
-        print(f"bid: {instrumentInfo.getBestBidVolume()} @ {instrumentInfo.getBestBidPrice()}")
-        print(f"ask: {instrumentInfo.getBestAskVolume()} @ {instrumentInfo.getBestAskPrice()}")
-        print(f"band_up: {band_up}, band_down: {band_down}")
-        band_up = band_up.values[-1][0]
-        band_down = band_down.values[-1][0]
+    def bollinger_band_strategy(self, instrumentInfo: InstrumentInfo, std_dev_mult: float = 1, verbose=False):
+        band_up, band_down = instrumentInfo.getBollingerBands(std_dev_mult=std_dev_mult)
+        if verbose:
+            print(f"bid: {instrumentInfo.getBestBidVolume()} @ {instrumentInfo.getBestBidPrice()}")
+            print(f"ask: {instrumentInfo.getBestAskVolume()} @ {instrumentInfo.getBestAskPrice()}")
+            print(f"band_up: {band_up}, band_down: {band_down}")
 
-        if instrumentInfo.getBestAskPrice() > band_up:
-            volume = min(round(instrumentInfo.POS_LIMIT - instrumentInfo.currentPosition),
-                         abs(instrumentInfo.getBestAskVolume()),
-                         instrumentInfo.getAvailableVolume(buy=True))
+        if band_up is None or band_down is None:
+            return
+
+        if instrumentInfo.getBestBidPrice() > band_up:
+            # volume = min(round(instrumentInfo.POS_LIMIT - instrumentInfo.currentPosition),
+            #              abs(instrumentInfo.getBestAskVolume()),
+            #              instrumentInfo.getAvailableVolume(buy=True))
+            volume = instrumentInfo.POS_LIMIT - instrumentInfo.currentPosition
             if volume > 0:
-                instrumentInfo.orders.append(Order(instrumentInfo.PRODUCT, instrumentInfo.getBestAskPrice(), volume))
-                instrumentInfo.currentPosition += volume
-                print(f"Buying {volume} {instrumentInfo.PRODUCT} @ {instrumentInfo.getBestAskPrice()}")
+                instrumentInfo.orders.append(Order(instrumentInfo.PRODUCT, instrumentInfo.getBestBidPrice(), -volume))
+                # instrumentInfo.currentPosition -= volume
+                if verbose:
+                    print(f"Buying {volume} {instrumentInfo.PRODUCT} @ {instrumentInfo.getBestAskPrice()}")
 
         elif instrumentInfo.getBestAskPrice() < band_down:
-            volume = min(round(instrumentInfo.POS_LIMIT - instrumentInfo.currentPosition),
-                         abs(instrumentInfo.getBestAskVolume()),
-                         instrumentInfo.getAvailableVolume(buy=False))
+            # volume = min(round(instrumentInfo.POS_LIMIT - instrumentInfo.currentPosition),
+            #              abs(instrumentInfo.getBestAskVolume()),
+            #              instrumentInfo.getAvailableVolume(buy=False))
+            volume = instrumentInfo.POS_LIMIT - instrumentInfo.currentPosition
             if volume > 0:
-                instrumentInfo.orders.append(Order(instrumentInfo.PRODUCT, instrumentInfo.getBestAskPrice(), -volume))
+                instrumentInfo.orders.append(Order(instrumentInfo.PRODUCT, instrumentInfo.getBestAskPrice(), volume))
                 instrumentInfo.currentPosition -= volume
-                print(f"Selling {volume} {instrumentInfo.PRODUCT} @ {instrumentInfo.getBestBidPrice()}")
+                if verbose:
+                    print(f"Selling {volume} {instrumentInfo.PRODUCT} @ {instrumentInfo.getBestBidPrice()}")
 
     def base_strategy(self, instrumentInfo: InstrumentInfo):
         band_up, band_down = instrumentInfo.getBollingerBands(std_dev_mult=1)
@@ -380,12 +391,11 @@ class Trader:
                 pass
 
             if product == "KELP":
-                # self.bollinger_band_strategy(self.kelpInfo, verbose=True)
-                print("priceHistory:", self.kelpInfo.priceHistory)
+                self.bollinger_band_strategy(self.kelpInfo, std_dev_mult=0.1, verbose=True)
+                # print("priceHistory:", self.kelpInfo.priceHistory)
 
             if product == "SQUID_INK":
                 pass
-
 
         traderData = {}
         for instrumentInfo in self.allInfo:
