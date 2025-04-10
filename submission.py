@@ -168,6 +168,8 @@ class Trader:
         """Buys when bin/ ask are outside of bollinger bands"""
         band_up, band_down = instrumentInfo.getBollingerBands(std_dev_mult=std_dev_mult)
         if verbose:
+            print("bollinger_band_strategy")
+            print("Instrument:", instrumentInfo.PRODUCT)
             print(f"bid: {instrumentInfo.getBestBidVolume()} @ {instrumentInfo.getBestBidPrice()}")
             print(f"ask: {instrumentInfo.getBestAskVolume()} @ {instrumentInfo.getBestAskPrice()}")
             if band_up is not None and band_down is not None:
@@ -181,7 +183,7 @@ class Trader:
         # Sell when bid is above band_up
         if instrumentInfo.getBestBidPrice() > band_up:
             # Max amount we would be able to sell based on the position limit
-            volume = instrumentInfo.POS_LIMIT - instrumentInfo.currentPosition
+            volume = instrumentInfo.POS_LIMIT + instrumentInfo.currentPosition
             if volume > 0:
                 instrumentInfo.orders.append(
                     Order(instrumentInfo.PRODUCT, instrumentInfo.getBestBidPrice(), int(-volume)))
@@ -197,31 +199,36 @@ class Trader:
                 if verbose:
                     print(f"Buying {volume} {instrumentInfo.PRODUCT} @ {instrumentInfo.getBestAskPrice()}")
 
-    def fair_price_strat(self, instrumentInfo: InstrumentInfo, std_devs: float = 0, verbose=False):
-        fair_price = instrumentInfo.getSMA()
+    def fair_price_strat(self, instrumentInfo: InstrumentInfo, std_devs: float = 0, always_transact: float = 1.5, verbose=False):
+        sma = instrumentInfo.getSMA()
         std_dev = instrumentInfo.getStdDev()
         pos = instrumentInfo.currentPosition
         pos_limit = instrumentInfo.POS_LIMIT
 
-        if fair_price is None or std_dev is None:
+        if sma is None or std_dev is None:
             return
 
         distance = std_dev * std_devs
+        always_transact_value = (always_transact - std_devs) * std_dev
 
-        delta_fair = pos * ((3 * std_dev) / pos_limit)
-        delta_fair = 0
+        delta_fair = -pos * (always_transact_value / pos_limit)
 
-        fair_price += delta_fair
+        fair_price = sma + delta_fair
 
         if verbose:
+            print("fair_price_strategy")
+            print("Instrument:", instrumentInfo.PRODUCT)
             print(f"bid: {instrumentInfo.getBestBidVolume()} @ {instrumentInfo.getBestBidPrice()}")
             print(f"ask: {instrumentInfo.getBestAskVolume()} @ {instrumentInfo.getBestAskPrice()}")
+            print("sma:", sma)
             print("Fair Price:", fair_price)
+            print("Sell at: ", fair_price + (distance / 2))
+            print("Buy at: ", fair_price - (distance / 2))
 
         # Sell when bid is above fair_price
         if instrumentInfo.getBestBidPrice() > fair_price + (distance / 2):
             # Max amount we would be able to sell based on the position limit
-            volume = instrumentInfo.POS_LIMIT - instrumentInfo.currentPosition
+            volume = instrumentInfo.POS_LIMIT + instrumentInfo.currentPosition
             if volume > 0:
                 instrumentInfo.orders.append(
                     Order(instrumentInfo.PRODUCT, instrumentInfo.getBestBidPrice(), int(-volume)))
@@ -277,15 +284,16 @@ class Trader:
         for product in state.order_depths.keys():
 
             if product == "RAINFOREST_RESIN":
-                self.bollinger_band_strategy(self.resinInfo, std_dev_mult=0.1, verbose=False)
-                # self.fair_price_strat(self.resinInfo, std_devs=0.1, verbose=True)
-                pass
+                self.fair_price_strat(self.resinInfo, std_devs=0.1, always_transact=1, verbose=True)
+                # self.bollinger_band_strategy(self.resinInfo, std_dev_mult=1, verbose=False)
 
             if product == "KELP":
-                self.bollinger_band_strategy(self.kelpInfo, std_dev_mult=0.1, verbose=False)
+                self.fair_price_strat(self.kelpInfo, std_devs=0.5, verbose=True)
+                # self.bollinger_band_strategy(self.kelpInfo, std_dev_mult=1, verbose=False)
 
-            if product == "SQUID_INK":
-                self.bollinger_band_strategy(self.inkInfo, std_dev_mult=0.1, verbose=False)
+            # if product == "SQUID_INK":
+            #     self.fair_price_strat(self.inkInfo, std_devs=0.5, verbose=True)
+            #     # self.bollinger_band_strategy(self.inkInfo, std_dev_mult=1, verbose=False)
 
         traderData = {}
         result = {}
