@@ -288,7 +288,7 @@ class Trader:
                 # self.bollinger_band_strategy(self.resinInfo, std_dev_mult=1, verbose=False)
 
             if product == "KELP":
-                self.fair_price_strat(self.kelpInfo, std_devs=0.5, verbose=True)
+                self.fair_price_strat(self.kelpInfo, std_devs=0.5, always_transact=1.5, verbose=True)
                 # self.bollinger_band_strategy(self.kelpInfo, std_dev_mult=1, verbose=False)
 
             # if product == "SQUID_INK":
