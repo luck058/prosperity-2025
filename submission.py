@@ -28,6 +28,8 @@ class Trader:
 
             self.currentPosition: float = 0
 
+            # Number of shells gained/ lost by this instrument
+            self.shells: float = 0
 
         # region bid/ask price/volume getters
         def getBestBidPrice(self):
@@ -81,9 +83,23 @@ class Trader:
             else:
                 return np.mean(self.priceHistory[-period:])
 
+        def getStdDev(self, period=None) -> float | None:
+            """
+            Get the standard deviation with period = period
+            If period=None (default), uses period = self.PERIOD
+            Uses priceHistory (ie. average between bid and ask)
+            """
+            if period is None:
+                period = self.PERIOD
+
+            if len(self.priceHistory) < period:
+                return None
+            else:
+                return np.std(self.priceHistory[-period:])
+
         def getBollingerBands(self, std_dev_mult: float = 2) -> tuple[float, float]:
             """Get the bollinger bands based off SMA"""
-            std = np.std(self.priceHistory)
+            std = self.getStdDev()
             moving_average = self.getSMA()
 
             if std is None or moving_average is None:
@@ -94,7 +110,6 @@ class Trader:
             return bollinger_up, bollinger_down
 
         # endregion
-
 
     def __init__(self):
         # region define instrumentInfo
@@ -121,10 +136,10 @@ class Trader:
 
         self.allInfo = [self.resinInfo, self.kelpInfo, self.inkInfo]
 
-        self.shells = 0
+        self.total_shells = 0
 
     # region Debug messaging functions
-    def processPastTrades(self, state: TradingState, shells: float) -> float:
+    def processPastTrades(self, state: TradingState, shells: dict[str, float]) -> dict[str, float]:
         """Print all trades that happened in the previous timestep"""
 
         for product in state.own_trades.keys():
@@ -138,10 +153,10 @@ class Trader:
 
                     if are_buyer:
                         print("Bought", end="")
-                        shells -= trade.quantity * trade.price
+                        shells[trade.symbol] -= trade.quantity * trade.price
                     else:
                         print("Sold", end="")
-                        shells += trade.quantity * trade.price
+                        shells[trade.symbol] += trade.quantity * trade.price
 
                     print(f" {trade.quantity} {trade.symbol} at {trade.price} seashells at time={trade.timestamp}")
         return shells
@@ -149,7 +164,7 @@ class Trader:
     # endregion
 
     # region Strategies
-    def bollinger_band_strategy(self, instrumentInfo: InstrumentInfo, std_dev_mult: float = 1, add_to_med: float=0, verbose=False):
+    def bollinger_band_strategy(self, instrumentInfo: InstrumentInfo, std_dev_mult: float = 1, verbose=False):
         """Buys when bin/ ask are outside of bollinger bands"""
         band_up, band_down = instrumentInfo.getBollingerBands(std_dev_mult=std_dev_mult)
         if verbose:
@@ -168,7 +183,8 @@ class Trader:
             # Max amount we would be able to sell based on the position limit
             volume = instrumentInfo.POS_LIMIT - instrumentInfo.currentPosition
             if volume > 0:
-                instrumentInfo.orders.append(Order(instrumentInfo.PRODUCT, instrumentInfo.getBestBidPrice(), int(-volume)))
+                instrumentInfo.orders.append(
+                    Order(instrumentInfo.PRODUCT, instrumentInfo.getBestBidPrice(), int(-volume)))
                 if verbose:
                     print(f"Selling {volume} {instrumentInfo.PRODUCT} @ {instrumentInfo.getBestBidPrice()}")
 
@@ -181,11 +197,56 @@ class Trader:
                 if verbose:
                     print(f"Buying {volume} {instrumentInfo.PRODUCT} @ {instrumentInfo.getBestAskPrice()}")
 
+    def fair_price_strat(self, instrumentInfo: InstrumentInfo, std_devs: float = 0, verbose=False):
+        fair_price = instrumentInfo.getSMA()
+        std_dev = instrumentInfo.getStdDev()
+        pos = instrumentInfo.currentPosition
+        pos_limit = instrumentInfo.POS_LIMIT
+
+        if fair_price is None or std_dev is None:
+            return
+
+        distance = std_dev * std_devs
+
+        delta_fair = pos * ((3 * std_dev) / pos_limit)
+        delta_fair = 0
+
+        fair_price += delta_fair
+
+        if verbose:
+            print(f"bid: {instrumentInfo.getBestBidVolume()} @ {instrumentInfo.getBestBidPrice()}")
+            print(f"ask: {instrumentInfo.getBestAskVolume()} @ {instrumentInfo.getBestAskPrice()}")
+            print("Fair Price:", fair_price)
+
+        # Sell when bid is above fair_price
+        if instrumentInfo.getBestBidPrice() > fair_price + (distance / 2):
+            # Max amount we would be able to sell based on the position limit
+            volume = instrumentInfo.POS_LIMIT - instrumentInfo.currentPosition
+            if volume > 0:
+                instrumentInfo.orders.append(
+                    Order(instrumentInfo.PRODUCT, instrumentInfo.getBestBidPrice(), int(-volume)))
+                if verbose:
+                    print(f"Selling {volume} {instrumentInfo.PRODUCT} @ {instrumentInfo.getBestBidPrice()}")
+
+        # Buy when ask is below fair_price
+        elif instrumentInfo.getBestAskPrice() < fair_price - (distance / 2):
+            # Max amount we would be able to buy based on the position limit
+            volume = instrumentInfo.POS_LIMIT - instrumentInfo.currentPosition
+            if volume > 0:
+                instrumentInfo.orders.append(Order(instrumentInfo.PRODUCT, instrumentInfo.getBestAskPrice(), volume))
+                if verbose:
+                    print(f"Buying {volume} {instrumentInfo.PRODUCT} @ {instrumentInfo.getBestAskPrice()}")
+
     # endregion
 
     def run(self, state: TradingState) -> Dict[str, List[Order]]:
         if state.timestamp > 0:
             prevTraderData = jsonpickle.loads(state.traderData)
+            shells_dict = prevTraderData["shells"]
+        else:
+            shells_dict = {}
+            for instrumentInfo in self.allInfo:
+                shells_dict[instrumentInfo.PRODUCT] = 0
 
         # region Set order depth and append live/weighted prices to each instrument
         for instrumentInfo in self.allInfo:
@@ -202,29 +263,29 @@ class Trader:
             instrumentInfo.appendHistoricPrice()
         # endregion
 
-        # Process past trades
+        # Process past trades and update shells
         if state.timestamp > 0:
-            self.shells = self.processPastTrades(state, prevTraderData["shells"])
+            shells_dict = self.processPastTrades(state, shells_dict)
+            self.total_shells = sum(shells_dict.values())
 
         # Debug messages
         print("Positions:", state.position)
-        print("Shells:", self.shells)
-
+        print("Shells:", shells_dict)
+        print("Total Shells:", self.total_shells)
 
         # Perform strategies for all products
         for product in state.order_depths.keys():
 
             if product == "RAINFOREST_RESIN":
-                self.bollinger_band_strategy(self.resinInfo, std_dev_mult=0.1, verbose=True)
+                self.bollinger_band_strategy(self.resinInfo, std_dev_mult=0.1, verbose=False)
+                # self.fair_price_strat(self.resinInfo, std_devs=0.1, verbose=True)
                 pass
 
             if product == "KELP":
-                # self.bollinger_band_strategy(self.kelpInfo, std_dev_mult=0.1, verbose=True)
-                # print("priceHistory:", self.kelpInfo.priceHistory)
-                pass
+                self.bollinger_band_strategy(self.kelpInfo, std_dev_mult=0.1, verbose=False)
 
             if product == "SQUID_INK":
-                pass
+                self.bollinger_band_strategy(self.inkInfo, std_dev_mult=0.1, verbose=False)
 
         traderData = {}
         result = {}
@@ -235,7 +296,8 @@ class Trader:
 
             # Store the variables which need to be stored for future timesteps
             traderData[instrumentInfo.PRODUCT] = {"priceHistory": instrumentInfo.priceHistory}
-        traderData["shells"] = self.shells
+
+        traderData["shells"] = shells_dict
 
         conversions = 1
         return result, conversions, jsonpickle.dumps(traderData)
